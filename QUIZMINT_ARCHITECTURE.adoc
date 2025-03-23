@@ -1,0 +1,256 @@
+
+= SPEC-001: Quizmint – AI-Powered Study Material Generator
+:sectnums:
+:toc:
+
+== Background
+
+Students often rely on textbooks and notes in PDF format to prepare for exams. However, extracting key concepts and testing oneself requires significant time and effort. This application aims to automate the generation of study cards and practice questions using AI, based on PDF documents uploaded by the user. The tool will personalize difficulty based on student age and preferred challenge level. This will allow efficient and personalized learning, and sessions can be saved for future continuation.
+
+== Requirements
+
+The system must fulfill the following functional and non-functional requirements. These are organized using the MoSCoW prioritization framework.
+
+=== Must Have
+- Run on Mac, PC, Linux, Chromebook, iOS, Android
+- Use only completely free tools and libraries
+- Perform quickly and efficiently (low latency)
+- Capture user's age during signup
+- Upload 1 PDF document for free users; multiple for paid users
+- Generate up to 10 study cards from document(s) for free users; unlimited for paid users
+  - User selects subject(s) or entire document as source
+  - Study cards tailored by age and difficulty level (easy, medium, hard)
+- Generate up to 10 MCQs for free users; unlimited for paid users
+  - User selects subject(s) or entire document as source
+  - Questions tailored by age and difficulty level
+  - System auto-grades and tracks progress
+- Free users can save one session
+- Paid users can save multiple sessions
+
+=== Should Have
+- Ability to review saved study cards and questions later
+- Display progress trends (e.g., via simple charts)
+
+=== Could Have
+- Offline mode with local session cache
+- AI feedback on wrong answers
+
+=== Won’t Have (for MVP)
+- Real-time collaboration or multiplayer quizzes
+- Handwritten PDF recognition
+
+== Method
+
+=== Assumptions
+
+- The application will be a hybrid app (PWA-first) that works across desktop and mobile platforms.
+- Backend logic and AI integration will be built using Firebase Functions (serverless).
+- Firebase Firestore will be used for storing users, sessions, and progress data.
+- Free-tier AI APIs (e.g., HuggingFace Inference API) will generate questions and study cards.
+- Output types: Multiple Choice Questions (MCQs) and Fill-in-the-Blank questions.
+
+=== System Architecture
+
+[plantuml]
+----
+@startuml
+actor User
+User -> Frontend : Upload PDF + Choose Settings
+Frontend -> Firebase Storage : Upload PDF File
+Frontend -> Firestore : Save metadata (user, age, subject, difficulty)
+Firestore -> Firebase Function : Trigger on new doc metadata
+Firebase Function -> AI API : Send extracted text for Q&A generation
+AI API --> Firebase Function : Generated questions/cards
+Firebase Function -> Firestore : Save generated questions
+User -> Frontend : Access Study Session
+Frontend -> Firestore : Load questions, track progress
+@enduml
+----
+
+=== Components
+
+1. **Frontend (React + PWA)**
+   - Upload PDF, select difficulty, subject, question type
+   - Display generated study materials
+   - Save/restore study sessions
+   - Track progress
+
+2. **Firebase Functions**
+   - Triggered by new session metadata
+   - Extract text from PDF (using `pdf-parse`)
+   - Call HuggingFace API (or similar) to generate MCQs / Fill-in-the-blank
+   - Save questions into Firestore
+
+3. **Firestore Schema**
+```json
+// Users Collection
+{
+  "userId": {
+    "age": 13,
+    "email": "user@example.com",
+    "subscription": "free"
+  }
+}
+
+// Sessions Collection
+{
+  "sessionId": {
+    "userId": "userId",
+    "pdfUrl": "...",
+    "createdAt": "...",
+    "subject": "Science",
+    "difficulty": "medium",
+    "type": "mcq",
+    "questions": [
+      {
+        "type": "mcq",
+        "question": "What is photosynthesis?",
+        "options": ["A", "B", "C", "D"],
+        "answer": "A"
+      }
+    ],
+    "progress": {
+      "answered": 3,
+      "correct": 2
+    }
+}
+```
+
+== Implementation
+
+=== 1. Project Setup
+- Initialize GitHub repository
+- Create React + Vite project
+- Set up Tailwind CSS (for styling)
+- Install and configure `vite-plugin-pwa`
+- Set up routing using `react-router-dom`
+
+=== 2. Firebase Integration
+- Create Firebase project
+- Enable Firestore, Auth, Storage, and Functions
+- Connect Firebase SDK to frontend
+- Set up Firebase Hosting (optional for PWA deployment)
+
+=== 3. User Authentication
+- Implement signup form (capture email, password, age)
+- Implement login and logout
+- Store user data (including age and subscription) in Firestore
+- Support Google OAuth as a sign-in option
+
+=== 4. PDF Upload
+- Create PDF upload UI (limit 1 for free users)
+- Upload PDF to Firebase Storage
+- Create session metadata doc in Firestore (trigger backend)
+
+=== 5. Backend AI Processing
+- Write Firebase Function to trigger on new session
+- Download PDF from Storage and extract text (using `pdf-parse`)
+- Call free AI API (e.g., HuggingFace) to generate MCQs and fill-in-the-blank
+- Save questions into Firestore under the session document
+
+=== 6. Study Session UI
+- Build UI to view and answer study questions
+- Support both MCQ and fill-in-the-blank formats
+- Add difficulty level and subject filters
+- Save answers and track progress (correct/incorrect, score)
+
+=== 7. Session Management
+- Free user: enforce single session limit
+- Paid user: allow multiple sessions
+- Add “Save and Resume” feature
+- List previous sessions for continuation (paid)
+
+=== 8. Grading & Progress Tracking
+- Auto-grade submitted answers
+- Update session document with progress and score
+- Show basic progress analytics (e.g., correct %, time spent)
+
+=== 9. Deployment & Testing
+- Deploy frontend to Netlify or Vercel
+- Deploy Firebase Functions via CLI
+- Perform manual testing across devices (desktop, iOS, Android)
+- Verify PWA install and offline mode works
+
+== Milestones
+
+=== Milestone 1: Project Bootstrapping
+- [ ] Initialize GitHub repository
+- [ ] Create React + Vite project
+- [ ] Set up Tailwind CSS (for styling)
+- [ ] Install and configure `vite-plugin-pwa`
+- [ ] Set up routing using `react-router-dom`
+
+=== Milestone 2: Firebase Integration
+- [ ] Create Firebase project
+- [ ] Enable Firestore, Auth, Storage, and Functions
+- [ ] Connect Firebase SDK to frontend
+- [ ] Set up Firebase Hosting (optional for PWA deployment)
+
+=== Milestone 3: User Authentication
+- [ ] Implement signup form (capture email, password, age)
+- [ ] Implement login and logout
+- [ ] Store user data (including age and subscription) in Firestore
+- [ ] Support Google OAuth as a sign-in option
+
+=== Milestone 4: PDF Upload
+- [ ] Create PDF upload UI (limit 1 for free users)
+- [ ] Upload PDF to Firebase Storage
+- [ ] Create session metadata doc in Firestore (trigger backend)
+
+=== Milestone 5: Backend AI Processing
+- [ ] Write Firebase Function to trigger on new session
+- [ ] Download PDF from Storage and extract text (using `pdf-parse`)
+- [ ] Call free AI API (e.g., HuggingFace) to generate MCQs and fill-in-the-blank
+- [ ] Save questions into Firestore under the session document
+
+=== Milestone 6: Study Session UI
+- [ ] Build UI to view and answer study questions
+- [ ] Support both MCQ and fill-in-the-blank formats
+- [ ] Add difficulty level and subject filters
+- [ ] Save answers and track progress (correct/incorrect, score)
+
+=== Milestone 7: Session Management
+- [ ] Free user: enforce single session limit
+- [ ] Paid user: allow multiple sessions
+- [ ] Add “Save and Resume” feature
+- [ ] List previous sessions for continuation (paid)
+
+=== Milestone 8: Grading & Progress Tracking
+- [ ] Auto-grade submitted answers
+- [ ] Update session document with progress and score
+- [ ] Show basic progress analytics (e.g., correct %, time spent)
+
+=== Milestone 9: Deployment & Testing
+- [ ] Deploy frontend to Netlify or Vercel
+- [ ] Deploy Firebase Functions via CLI
+- [ ] Perform manual testing across devices (desktop, iOS, Android)
+- [ ] Verify PWA install and offline mode works
+
+== Gathering Results
+
+To assess whether Quizmint meets its intended goals, the following metrics and methods will be used:
+
+=== Quantitative Metrics
+- User Engagement
+  - Number of new signups (free vs paid)
+  - Average sessions per user
+  - Session duration
+- Content Usage
+  - Number of PDFs uploaded
+  - Questions generated per session
+  - Completion rate of questionnaires
+- Performance
+  - Average response time for AI question generation
+  - Error rate in question generation or grading
+
+=== Qualitative Feedback
+- In-app feedback form to collect:
+  - Content quality feedback (Are the questions accurate/useful?)
+  - Ease of use and UI/UX ratings
+  - Age-appropriateness of difficulty levels
+- Optional surveys via email for beta users
+
+=== Success Criteria
+- At least 100 unique users in the first 60 days
+- 75%+ of users complete at least 1 full study session
+- 85%+ accuracy in AI-generated content (measured via user feedback)

@@ -37,7 +37,7 @@ function StudySession() {
   // Show loading message if data not yet loaded
   if (!session) return <div className="p-6">Loading session...</div>;
 
-  // 🔍 Extract text from PDF and save to Firestore
+  // 🔍 Extracts full text from the uploaded PDF file and saves to Firestore
 const extractTextFromPDF = async (file) => {
   const reader = new FileReader();
 
@@ -45,10 +45,11 @@ const extractTextFromPDF = async (file) => {
     const typedArray = new Uint8Array(reader.result);
 
     try {
+      // Load the PDF document from binary data
       const pdf = await pdfjsLib.getDocument(typedArray).promise;
       let fullText = "";
 
-      // Loop through all pages to extract text
+      // Loop through all pages and extract text
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
@@ -56,20 +57,22 @@ const extractTextFromPDF = async (file) => {
         fullText += pageText + "\n";
       }
 
-      console.log("📄 Extracted Text:", fullText); // Preview in dev console
+      console.log("📄 Extracted Text:", fullText);
 
-      // ✅ Save extracted text into Firestore under this session
+      // 🔥 Save extracted text to Firestore under the session document
       const sessionRef = doc(db, "sessions", sessionId);
       await updateDoc(sessionRef, {
-        rawText: fullText,
+        extractedText: fullText,
+        extractedAt: new Date()
       });
 
-      console.log("✅ Saved extracted text to Firestore!");
+      console.log("✅ Text successfully saved to Firestore");
     } catch (err) {
-      console.error("❌ Failed to extract PDF text:", err);
+      console.error("❌ Failed to extract or save PDF text:", err);
     }
   };
 
+  // Start reading the file as binary
   reader.readAsArrayBuffer(file);
 };
 

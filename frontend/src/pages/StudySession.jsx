@@ -39,37 +39,39 @@ function StudySession() {
 
   // 🔍 Extracts full text from the uploaded PDF file and saves it
   const extractTextFromPDF = async (file) => {
-    const reader = new FileReader();
+  const reader = new FileReader();
 
-    reader.onload = async () => {
-      const typedArray = new Uint8Array(reader.result);
+  reader.onload = async () => {
+    const typedArray = new Uint8Array(reader.result);
 
-      try {
-        const pdf = await pdfjsLib.getDocument(typedArray).promise;
-        let fullText = "";
+    try {
+      const pdf = await pdfjsLib.getDocument(typedArray).promise;
+      let fullText = "";
 
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          const pageText = content.items.map((item) => item.str).join(" ");
-          fullText += pageText + "\n";
-        }
-
-        console.log("📄 Extracted Text:", fullText);
-
-        // 💾 Save to Firestore under this session
-        const docRef = doc(db, "sessions", sessionId);
-        await updateDoc(docRef, { pdfText: fullText });
-
-        // Update local state to reflect saved text
-        setPdfText(fullText);
-      } catch (err) {
-        console.error("❌ Failed to extract or save PDF text:", err);
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const pageText = content.items.map((item) => item.str).join(" ");
+        fullText += pageText + "\n";
       }
-    };
 
-    reader.readAsArrayBuffer(file);
+      console.log("📄 Extracted Text:", fullText);
+
+      // ✅ Update only specific fields, not the whole document
+      const sessionRef = doc(db, "sessions", sessionId);
+      await updateDoc(sessionRef, {
+        extractedText: fullText,
+        extractedAt: new Date()
+      });
+
+    } catch (err) {
+      console.error("❌ Failed to extract or save PDF text:", err);
+    }
   };
+
+  reader.readAsArrayBuffer(file);
+};
+
 
   if (!session) return <div className="p-6">Loading session...</div>;
 

@@ -1,18 +1,20 @@
 import { useParams } from "react-router-dom";              // To read the :sessionId from the URL
 import { useEffect, useState } from "react";               // For managing state and fetching data
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore"; // Firestore functions to get and update a document
 import { db } from "../firebase";                          // Firebase config
 import PDFUploader from "../components/PDFUploader";       // PDF upload UI
-import * as pdfjsLib from "pdfjs-dist/build/pdf";   
+import * as pdfjsLib from "pdfjs-dist/build/pdf";          // PDF.js legacy-compatible build
 
-      // ✅ Use the legacy-compatible build
-
-// ✅ Tell pdf.js to load the worker from the public folder (works with Vite)
-pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
+// ✅ Tell pdf.js where the worker is (Vite-compatible path)
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.js",
+  import.meta.url
+).toString();
 
 function StudySession() {
   const { sessionId } = useParams();               // Read sessionId from URL
   const [session, setSession] = useState(null);    // Store session data
+  const [pdfText, setPdfText] = useState("");      // Store extracted PDF text
 
   // Load session details on page load
   useEffect(() => {
@@ -23,6 +25,7 @@ function StudySession() {
 
         if (docSnap.exists()) {
           setSession(docSnap.data()); // Store session data
+          setPdfText(docSnap.data()?.pdfText || ""); // Load previously saved PDF text if any
         } else {
           console.log("No such session exists in Firestore.");
         }
@@ -34,47 +37,41 @@ function StudySession() {
     fetchSession();
   }, [sessionId]);
 
-  // Show loading message if data not yet loaded
-  if (!session) return <div className="p-6">Loading session...</div>;
+  // 🔍 Extracts full text from the uploaded PDF file and saves it
+  const extractTextFromPDF = async (file) => {
+    const reader = new FileReader();
 
-  // 🔍 Extracts full text from the uploaded PDF file and saves to Firestore
-const extractTextFromPDF = async (file) => {
-  const reader = new FileReader();
+    reader.onload = async () => {
+      const typedArray = new Uint8Array(reader.result);
 
-  reader.onload = async () => {
-    const typedArray = new Uint8Array(reader.result);
+      try {
+        const pdf = await pdfjsLib.getDocument(typedArray).promise;
+        let fullText = "";
 
-    try {
-      // Load the PDF document from binary data
-      const pdf = await pdfjsLib.getDocument(typedArray).promise;
-      let fullText = "";
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const pageText = content.items.map((item) => item.str).join(" ");
+          fullText += pageText + "\n";
+        }
 
-      // Loop through all pages and extract text
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        const pageText = content.items.map((item) => item.str).join(" ");
-        fullText += pageText + "\n";
+        console.log("📄 Extracted Text:", fullText);
+
+        // 💾 Save to Firestore under this session
+        const docRef = doc(db, "sessions", sessionId);
+        await updateDoc(docRef, { pdfText: fullText });
+
+        // Update local state to reflect saved text
+        setPdfText(fullText);
+      } catch (err) {
+        console.error("❌ Failed to extract or save PDF text:", err);
       }
+    };
 
-      console.log("📄 Extracted Text:", fullText);
-
-      // 🔥 Save extracted text to Firestore under the session document
-      const sessionRef = doc(db, "sessions", sessionId);
-      await updateDoc(sessionRef, {
-        extractedText: fullText,
-        extractedAt: new Date()
-      });
-
-      console.log("✅ Text successfully saved to Firestore");
-    } catch (err) {
-      console.error("❌ Failed to extract or save PDF text:", err);
-    }
+    reader.readAsArrayBuffer(file);
   };
 
-  // Start reading the file as binary
-  reader.readAsArrayBuffer(file);
-};
+  if (!session) return <div className="p-6">Loading session...</div>;
 
   return (
     <div className="p-6">
@@ -88,6 +85,16 @@ const extractTextFromPDF = async (file) => {
 
       {/* Upload + extract text from PDF */}
       <PDFUploader onPDFSelected={extractTextFromPDF} />
+
+      {pdfText && (
+        <>
+          <hr className="my-6" />
+          <h3 className="text-md font-semibold mb-2">Extracted Text:</h3>
+          <pre className="bg-gray-100 p-4 rounded max-h-[300px] overflow-y-auto whitespace-pre-wrap">
+            {pdfText}
+          </pre>
+        </>
+      )}
     </div>
   );
 }

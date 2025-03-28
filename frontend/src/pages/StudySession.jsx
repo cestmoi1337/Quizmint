@@ -1,22 +1,19 @@
-import { useParams } from "react-router-dom";              // To read the :sessionId from the URL
-import { useEffect, useState } from "react";               // For managing state and fetching data
-import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore"; // Firestore functions to get and update a document
+import { useParams } from "react-router-dom";              // Route param (sessionId)
+import { useEffect, useState } from "react";               // React state & lifecycle
+import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore"; // Firestore utils
+import * as pdfjsLib from "pdfjs-dist/build/pdf";          // PDF parser
+import PDFUploader from "../components/PDFUploader";       // Upload component
 import { db } from "../firebase";                          // Firebase config
-import PDFUploader from "../components/PDFUploader";       // PDF upload UI
-import * as pdfjsLib from "pdfjs-dist/build/pdf";          // PDF.js legacy-compatible build
 
-// ✅ Tell pdf.js where the worker is (Vite-compatible path)
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.js",
-  import.meta.url
-).toString();
+// Set PDF.js worker path to public folder (Vercel-compatible)
+pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
 
 function StudySession() {
-  const { sessionId } = useParams();               // Read sessionId from URL
-  const [session, setSession] = useState(null);    // Store session data
-  const [pdfText, setPdfText] = useState("");      // Store extracted PDF text
+  const { sessionId } = useParams();               // Extract sessionId from URL
+  const [session, setSession] = useState(null);    // Holds Firestore session data
+  const [previewText, setPreviewText] = useState(""); // Shows immediate preview of extracted text
 
-  // Load session details on page load
+  // 🔍 Fetch session details from Firestore
   useEffect(() => {
     const fetchSession = async () => {
       try {
@@ -24,62 +21,51 @@ function StudySession() {
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-          setSession(docSnap.data()); // Store session data
-          setPdfText(docSnap.data()?.pdfText || ""); // Load previously saved PDF text if any
+          setSession(docSnap.data());
         } else {
-          console.log("No such session exists in Firestore.");
+          console.warn("⚠️ Session not found in Firestore.");
         }
       } catch (err) {
-        console.error("Error retrieving session:", err);
+        console.error("❌ Error fetching session:", err);
       }
     };
 
     fetchSession();
   }, [sessionId]);
 
-  // 🔍 Extracts full text from the uploaded PDF file and saves it
-const extractTextFromPDF = async (file) => {
-  const reader = new FileReader();
+  // 📄 Extracts full text from PDF, saves to Firestore, updates preview
+  const extractTextFromPDF = async (file) => {
+    const reader = new FileReader();
 
-  reader.onload = async () => {
-    const typedArray = new Uint8Array(reader.result);
+    reader.onload = async () => {
+      const typedArray = new Uint8Array(reader.result);
 
-    try {
-      // 📄 Load PDF and extract text from all pages
-      const pdf = await pdfjsLib.getDocument(typedArray).promise;
-      let fullText = "";
+      try {
+        const pdf = await pdfjsLib.getDocument(typedArray).promise;
+        let fullText = "";
 
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        const pageText = content.items.map((item) => item.str).join(" ");
-        fullText += pageText + "\n";
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const pageText = content.items.map((item) => item.str).join(" ");
+          fullText += pageText + "\n";
+        }
+
+        const docRef = doc(db, "sessions", sessionId);
+        await updateDoc(docRef, {
+          extractedText: fullText,
+          extractedAt: serverTimestamp(),
+        });
+
+        setPreviewText(fullText);
+        console.log("✅ Extracted and saved PDF text to Firestore.");
+      } catch (err) {
+        console.error("❌ Failed to extract or save PDF text:", err);
       }
+    };
 
-      console.log("📄 Extracted text:", fullText);
-
-      // 🔥 Save extracted text to Firestore
-      const docRef = doc(db, "sessions", sessionId);
-      await updateDoc(docRef, {
-        extractedText: fullText,
-        extractedAt: serverTimestamp(),
-      });
-
-      // 🔁 Re-fetch updated session and update UI
-      const updatedSnap = await getDoc(docRef);
-      if (updatedSnap.exists()) {
-        setSession(updatedSnap.data());
-        console.log("✅ Session updated with new extracted text.");
-      }
-
-    } catch (err) {
-      console.error("❌ Failed to extract or save PDF text:", err);
-    }
+    reader.readAsArrayBuffer(file);
   };
-
-  reader.readAsArrayBuffer(file);
-};
-
 
   if (!session) return <div className="p-6">Loading session...</div>;
 
@@ -93,24 +79,21 @@ const extractTextFromPDF = async (file) => {
       <hr className="my-6" />
       <h2 className="text-lg font-semibold mb-2">Generate Study Materials</h2>
 
-      {/* Upload + extract text from PDF */}
       <PDFUploader onPDFSelected={extractTextFromPDF} />
 
-      {session.extractedText && (
-        <div className="mt-6">
-          <h3 className="text-md font-semibold mb-1">Extracted Text Preview:</h3>
-          <pre className="bg-gray-100 p-3 rounded text-sm whitespace-pre-wrap">
-            {session.extractedText}
-          </pre>
+      {previewText && (
+        <div className="mt-6 p-4 bg-gray-50 border rounded">
+          <h3 className="font-semibold mb-2">📄 Extracted Preview:</h3>
+          <pre className="whitespace-pre-wrap text-sm text-gray-800">{previewText}</pre>
         </div>
       )}
 
-      {pdfText && (
+      {session.extractedText && (
         <>
           <hr className="my-6" />
-          <h3 className="text-md font-semibold mb-2">Extracted Text:</h3>
-          <pre className="bg-gray-100 p-4 rounded max-h-[300px] overflow-y-auto whitespace-pre-wrap">
-            {pdfText}
+          <h3 className="text-md font-semibold mb-2">Extracted PDF Content:</h3>
+          <pre className="bg-gray-100 p-3 rounded whitespace-pre-wrap text-sm max-h-96 overflow-y-auto">
+            {session.extractedText}
           </pre>
         </>
       )}

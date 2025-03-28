@@ -1,6 +1,6 @@
 import { useParams } from "react-router-dom";              // To read the :sessionId from the URL
 import { useEffect, useState } from "react";               // For managing state and fetching data
-import { doc, getDoc, updateDoc } from "firebase/firestore"; // Firestore functions to get and update a document
+import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore"; // Firestore functions to get and update a document
 import { db } from "../firebase";                          // Firebase config
 import PDFUploader from "../components/PDFUploader";       // PDF upload UI
 import * as pdfjsLib from "pdfjs-dist/build/pdf";          // PDF.js legacy-compatible build
@@ -38,13 +38,14 @@ function StudySession() {
   }, [sessionId]);
 
   // 🔍 Extracts full text from the uploaded PDF file and saves it
-  const extractTextFromPDF = async (file) => {
+const extractTextFromPDF = async (file) => {
   const reader = new FileReader();
 
   reader.onload = async () => {
     const typedArray = new Uint8Array(reader.result);
 
     try {
+      // 📄 Load PDF and extract text from all pages
       const pdf = await pdfjsLib.getDocument(typedArray).promise;
       let fullText = "";
 
@@ -55,14 +56,21 @@ function StudySession() {
         fullText += pageText + "\n";
       }
 
-      console.log("📄 Extracted Text:", fullText);
+      console.log("📄 Extracted text:", fullText);
 
-      // ✅ Update only specific fields, not the whole document
-      const sessionRef = doc(db, "sessions", sessionId);
-      await updateDoc(sessionRef, {
+      // 🔥 Save extracted text to Firestore
+      const docRef = doc(db, "sessions", sessionId);
+      await updateDoc(docRef, {
         extractedText: fullText,
-        extractedAt: new Date()
+        extractedAt: serverTimestamp(),
       });
+
+      // 🔁 Re-fetch updated session and update UI
+      const updatedSnap = await getDoc(docRef);
+      if (updatedSnap.exists()) {
+        setSession(updatedSnap.data());
+        console.log("✅ Session updated with new extracted text.");
+      }
 
     } catch (err) {
       console.error("❌ Failed to extract or save PDF text:", err);
@@ -87,6 +95,15 @@ function StudySession() {
 
       {/* Upload + extract text from PDF */}
       <PDFUploader onPDFSelected={extractTextFromPDF} />
+
+      {session.extractedText && (
+        <div className="mt-6">
+          <h3 className="text-md font-semibold mb-1">Extracted Text Preview:</h3>
+          <pre className="bg-gray-100 p-3 rounded text-sm whitespace-pre-wrap">
+            {session.extractedText}
+          </pre>
+        </div>
+      )}
 
       {pdfText && (
         <>
